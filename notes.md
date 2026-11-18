@@ -38,7 +38,7 @@ WHERE order_ref = 'ORD-1001'
 GROUP BY order_ref
 HAVING COUNT(*) > 1;
 
-Při O, 1 záznamech nevrací nic, při 2 vrací 2.
+Při O, 1 záznamech nevrací nic, při 2 vrací 2 [POZOROVÁNO].
 
 ---
 DELETE FROM payments se po novém vložení znovu použilo id 1 a 2 (tabulka nemá AUTOINCREMENT). Tohle je zajímavý fakt pro testera, protože id nemusí být v čase jednoznačné. Zatím ho jen poznamenej jako [POZOROVÁNO] a rozvedeme to později.
