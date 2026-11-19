@@ -9,4 +9,4 @@ SELECT COUNT(*) ... WHERE order_ref = 'ORD-1001' je správně. Hodnoty 2, 0, 2, 
 - je červený při 0 (zápis se ztratil) i při 2+ (duplicita),
 - a nepotřebuje GROUP BY, HAVING ani DISTINCT.
 
-Pozor na poznámku “bez WHERE”: bez filtru by COUNT(*) počítal řádky všech objednávek a rozbil by ti test, jakmile v tabulce bude jiný klíč.
+Pozor na poznámku “bez WHERE”: bez filtru by COUNT(*) počítal řádky všech objednávek a rozbil by test, jakmile v tabulce bude jiný klíč.
