@@ -28,7 +28,7 @@ SELECT sqlite_version();
 ```
 * `[POZOROVÁNO]` Verze `3.54.1` (balíček sqlite-tools-win-x64-3540100).
 
-### Cizí klíče (`foreign_keys`)
+### Cizí klíče ([`foreign_keys`](screenshots/Foreign_Key_switch_valid_only_for_the_current_connection.png))
 ```sql
 PRAGMA foreign_keys;       -- výchozí stav 0
 PRAGMA foreign_keys = ON;
