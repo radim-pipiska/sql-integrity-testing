@@ -53,7 +53,7 @@ Dva styly SQL kontroly:
 1. **„Spočítej“:** `SELECT COUNT(*) ...` a porovnat s očekáváním.
 2. **„Najdi porušení“:** dotaz vrací řádky, které nemají existovat; prázdný výsledek = OK.
 
-### Dotaz 1: `COUNT(*)` [(závěrečné řešení)](screenshots/Duplicate_Check_with_COUNT.png)
+### [Dotaz 1:](screenshots/Duplicate_Check_with_COUNT.png) `COUNT(*)` (závěrečné řešení)
 ```sql
 SELECT COUNT(*) AS cnt
 FROM payments
@@ -63,7 +63,7 @@ WHERE order_ref = 'ORD-1001';
 * Filtr `WHERE` je nutný: bez něj by dotaz počítal řádky všech objednávek.
 * Alternativy aserce `cnt >= 1`, `cnt <> 0` (zelené při 2) a `cnt < 2` (zelená při 0) neumí zachytit obě chyby.
 
-### Dotaz 2: [„najdi porušení“](screenshots/Duplicate_Check_with_WHERE.png)
+### [Dotaz 2:](screenshots/Duplicate_Check_with_WHERE.png) „najdi porušení“
 ```sql
 SELECT order_ref, COUNT(*) AS cnt
 FROM payments
@@ -74,7 +74,7 @@ HAVING COUNT(*) > 1;
 * `[POZOROVÁNO]` Při 0 i 1 záznamu **žádný řádek**, při 2 záznamech řádek `ORD-1001 / 2`. Bez `WHERE` stejné chování.
 * `[VÝKLAD]` Prázdný výsledek nerozliší „nic se nezapsalo“ od „je to v pořádku“. `GROUP BY` na prázdné množině nevytvoří žádnou skupinu, `HAVING` to nezmění.
 
-### Dotaz 3: varianta s [`HAVING`](screenshots/Duplicate_Check_HAVING_COUNT.png)
+### [Dotaz 3:](screenshots/Duplicate_Check_HAVING_COUNT.png) varianta s `HAVING`
 ```sql
 SELECT order_ref, COUNT(*) AS cnt
 FROM payments
@@ -84,7 +84,7 @@ HAVING COUNT(*) <> 0 OR COUNT(*) > 1;
 * `[POZOROVÁNO]` 0 záznamů: žádný řádek. 1 záznam: `ORD-1001 / 1`. 2 záznamy: `ORD-1001 / 2`.
 * `[VÝKLAD]` Rozliší 0 od 1, ale výsledek se musí interpretovat, takže to není přímý pass/fail. Část `OR COUNT(*) > 1` je zbytečná.
 
-### Dotaz 4: `[DISTINCT](screenshots/Duplicate_Check_with_DISTINCT.png)` `/AI`
+### [Dotaz 4:](screenshots/Duplicate_Check_with_DISTINCT.png) `DISTINCT` `/AI`
 ```sql
 SELECT
     COUNT(*) AS celkem_radku,
@@ -119,4 +119,4 @@ WHERE order_ref = 'ORD-1001';
 
 ## 5. Chybové hlášky (SQLite)
 
-* Doslovná hláška pro `[HAVING COUNT(*) => 0;](screenshots/HAVING_COUNT_Syntax_Error.png)`, zkopírovaná z terminálu (ne přepsaná).
+* Doslovná hláška pro [`HAVING COUNT(*) => 0;`](screenshots/HAVING_COUNT_Syntax_Error.png), zkopírovaná z terminálu (ne přepsaná).
