@@ -94,7 +94,7 @@ WHERE order_ref = 'ORD-1001';
 ```
 * `[POZOROVÁNO]` 0 záznamů: `0 / 0`. 1 záznam: `1 / 0`. 2 záznamy: `2 / 1`.
 * `[VÝKLAD]` S filtrem `WHERE` je `COUNT(DISTINCT order_ref)` vždy 0 nebo 1, takže `pocet_duplicit` je při 0 i při 1 záznamu stejně `0`. Kdyby test hlídal jen tento sloupec, byl by při ztraceném zápisu falešně zelený. Zachraňuje ho první sloupec.
-* Řádek pro 3× `ORD-1001` v tabulce od AI: `[AI, neověřeno]`.
+* Řádek pro 3× `ORD-1001` v tabulce od AI: `[AI, pozorováno]`.
 
 ### Přehled (stavy tabulky pro `ORD-1001`)
 
@@ -103,7 +103,7 @@ WHERE order_ref = 'ORD-1001';
 | 0 záznamů | řádek s hodnotou `0` | žádný řádek | žádný řádek | `0 / 0` |
 | 1 záznam (očekáváno) | `1` | žádný řádek | `ORD-1001 / 1` | `1 / 0` |
 | 2 záznamy (duplicita) | `2` | `ORD-1001 / 2` | `ORD-1001 / 2` | `2 / 1` |
-| 3 záznamy | `3` | neověřeno | neověřeno | `3 / 2` [POZOROVÁNO] |
+| 3 záznamy | `3` | neověřeno | neověřeno | `3 / 2` |
 
 **Lekce:** nejlepší test je ten nejjednodušší, který umí selhat. Dotaz od AI byl složitější, než bylo potřeba, a jeho druhý sloupec sám o sobě nestačí.
 
