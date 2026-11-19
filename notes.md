@@ -74,7 +74,7 @@ HAVING COUNT(*) > 1;
 * `[POZOROVÁNO]` Při 0 i 1 záznamu **žádný řádek**, při 2 záznamech řádek `ORD-1001 / 2`. Bez `WHERE` stejné chování.
 * `[VÝKLAD]` Prázdný výsledek nerozliší „nic se nezapsalo“ od „je to v pořádku“. `GROUP BY` na prázdné množině nevytvoří žádnou skupinu, `HAVING` to nezmění.
 
-### Dotaz 3: varianta s `[HAVING](screenshots/Duplicate_Check_HAVING_COUNT.png)`
+### Dotaz 3: varianta s [`HAVING`](screenshots/Duplicate_Check_HAVING_COUNT.png)
 ```sql
 SELECT order_ref, COUNT(*) AS cnt
 FROM payments
