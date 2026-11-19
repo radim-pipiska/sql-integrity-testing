@@ -103,7 +103,7 @@ WHERE order_ref = 'ORD-1001';
 | 0 záznamů | řádek s hodnotou `0` | žádný řádek | žádný řádek | `0 / 0` |
 | 1 záznam (očekáváno) | `1` | žádný řádek | `ORD-1001 / 1` | `1 / 0` |
 | 2 záznamy (duplicita) | `2` | `ORD-1001 / 2` | `ORD-1001 / 2` | `2 / 1` |
-| 3 záznamy | neověřeno | neověřeno | neověřeno | neověřeno `/AI` |
+| 3 záznamy | `3` | neověřeno | neověřeno | `3 / 2` |
 
 **Lekce:** nejlepší test je ten nejjednodušší, který umí selhat. Dotaz od AI byl složitější, než bylo potřeba, a jeho druhý sloupec sám o sobě nestačí.
 
