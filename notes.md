@@ -53,7 +53,7 @@ Dva styly SQL kontroly:
 1. **„Spočítej“:** `SELECT COUNT(*) ...` a porovnat s očekáváním.
 2. **„Najdi porušení“:** dotaz vrací řádky, které nemají existovat; prázdný výsledek = OK.
 
-### Dotaz 1: `COUNT(*)` ([závěrečné řešení](screenshots/Duplicate_Check_with_COUNT.png))
+### Dotaz 1: `COUNT(*)` [(závěrečné řešení)](screenshots/Duplicate_Check_with_COUNT.png)
 ```sql
 SELECT COUNT(*) AS cnt
 FROM payments
