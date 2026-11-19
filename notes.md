@@ -1,107 +1,122 @@
-# Poznámky z testování databází (SQLite)
+# Poznámky: testování databází (SQLite)
 
-## 1. Co ověřuje test v databázi vs. aserce na odpověď
-* **Aserce na odpověď** ověřuje, co služba tvrdí (např. status `201`, tělo odpovědi, hlavičky).
-* **Test v databázi** ověřuje, co se skutečně stalo (kolik záznamů vzniklo, s jakými hodnotami a v jakém stavu).
-* *Poznámka z praxe:* Status `202 Accepted` znamená jen „přijato“ a u Vacation API vracel `200` i pro záznam uložený pod doslovným textem `{{PersonId}}`. Odpověď byla v pořádku, ale stav v databázi ne.
+Stav k 19. 11. 2026. Data v tabulce `payments` jsou **simulovaná ručními `INSERT`y**, žádné reálné API se tu nevolá. `[POZOROVÁNO]` se proto týká chování SQLite a mých dotazů, ne chování nějaké služby.
+
+**Značky:** `[POZOROVÁNO]` = viděl jsem na vlastním výstupu · `[VÝKLAD]` = můj závěr z pozorování · `[HYPOTÉZA]` / `[OVĚŘIT]` = zatím nepodloženo · `[OTÁZKA NA ANALYTIKA]` · `/AI` = výstup AI, platí až po ověření spuštěním
 
 ---
 
-## 2. Chování databáze a prostředí (SQLite)
+## 1. Odpověď API vs. stav v databázi
 
-### Spuštění a nastavení výpisu
+* **Aserce na odpověď** ověřuje, co služba tvrdí (status `201`, tělo, hlavičky).
+* **Test v databázi** ověřuje, co se skutečně stalo (kolik záznamů vzniklo, s jakými hodnotami, v jakém stavu).
+* Příklad z Vacation API (týdny 5–6): `[POZOROVÁNO]` API vrátilo `200` pro nerozbalenou proměnnou `{{PersonId}}` a zapsalo záznam pod tento doslovný text. Stav jsem viděl přes API, ne přímo v databázi (k databázi Vacation API nemám přístup).
+  * `[OTÁZKA NA ANALYTIKA]` Má API přijmout libovolný text jako `PersonId`?
+* Odlišný případ: `202 Accepted` znamená jen „přijato“, konečný stav se ověřuje následně (týdny 5–6).
+
+---
+
+## 2. Chování prostředí (SQLite)
+
 ```sql
--- Spuštění z příkazové řádky: C:\sqlite\sqlite3.exe test.db
+-- Spuštění z příkazové řádky (cestu k programu upravit podle instalace): sqlite3 test.db
 .headers on
 .mode column
 
 SELECT sqlite_version();
 .quit
 ```
+* `[POZOROVÁNO]` Verze `3.54.1` (balíček sqlite-tools-win-x64-3540100).
 
-### Kontrola cizích klíčů (`foreign_keys`)
+### Cizí klíče (`foreign_keys`)
 ```sql
-PRAGMA foreign_keys;       -- Výchozí stav je 0 (vypnuto)
-PRAGMA foreign_keys = ON;  -- Zapnutí kontroly
+PRAGMA foreign_keys;       -- výchozí stav 0
+PRAGMA foreign_keys = ON;
+PRAGMA foreign_keys;       -- po zapnutí 1
 ```
-* **[POZOROVÁNO]:** Přepínač platí jen pro aktuální spojení. Po `.quit` a novém spuštění je zase `0`. Pro testera to znamená, že databáze sama nemusí hlídat integritu, a test, který vypadá zeleně, může jen běžet na spojení s vypnutou kontrolou.
+* `[POZOROVÁNO]` Výchozí hodnota `0`, po `= ON` hodnota `1`, po `.quit` a novém spuštění zase `0`.
+* `[POZOROVÁNO]` Po restartu byl výpis v jiném formátu (rámečková tabulka), protože jsem nenastavil `.mode column`. Nastavení výpisu tedy také platí jen pro jedno spojení.
+* `[HYPOTÉZA]` Test může být zelený jen proto, že běží na spojení s vypnutou kontrolou cizích klíčů.
+* `[OVĚŘIT]` V `payments` zatím žádný cizí klíč není. Sabotáž: tabulka s `FOREIGN KEY`, vložit osiřelý záznam při `foreign_keys` = 0 a = 1.
 
-### Recyklace ID po smazání dat
-* **[POZOROVÁNO]:** Po `DELETE FROM payments` se při novém vložení znovu použila `id` 1 a 2 (tabulka nemá `AUTOINCREMENT`). Pro testera je to důležitý fakt, protože `id` nemusí být v čase jednoznačné.
+### Opakované `id` po smazání
+* `[POZOROVÁNO]` Po `DELETE FROM payments;` dostaly nově vložené řádky znovu `id` 1 a 2.
+* `[HYPOTÉZA]` Příčina: `id INTEGER PRIMARY KEY` bez `AUTOINCREMENT`.
+* `[OVĚŘIT]` Stejný postup s tabulkou s `AUTOINCREMENT`.
+* `[VÝKLAD]` Test, který po úklidu hledá záznam podle `id`, může narazit na jiný řádek se stejným `id`.
 
 ---
 
-## 3. Dva styly SQL kontroly v testech
-1. **„Spočítej“:** `SELECT COUNT(*) ...` a výsledek porovnej s očekáváním.
-2. **„Najdi porušení“:** Dotaz vrací řádky, které nemají existovat. Prázdný výsledek = OK.
+## 3. Kontrola duplicity: čtyři dotazy a jejich chování
 
-### Zkoumané dotazy
+Dva styly SQL kontroly:
+1. **„Spočítej“:** `SELECT COUNT(*) ...` a porovnat s očekáváním.
+2. **„Najdi porušení“:** dotaz vrací řádky, které nemají existovat; prázdný výsledek = OK.
 
-#### A) Styl „najdi porušení“ (`GROUP BY ... HAVING`)
+### Dotaz 1: `COUNT(*)` (závěrečné řešení)
+```sql
+SELECT COUNT(*) AS cnt
+FROM payments
+WHERE order_ref = 'ORD-1001';
+```
+* Aserce: `cnt = 1`. Z pozorovaných hodnot 0 / 1 / 2 je červená při 0 (ztracený zápis) i při 2 (duplicita).
+* Filtr `WHERE` je nutný: bez něj by dotaz počítal řádky všech objednávek.
+* Alternativy aserce `cnt >= 1`, `cnt <> 0` (zelené při 2) a `cnt < 2` (zelená při 0) neumí zachytit obě chyby.
+
+### Dotaz 2: „najdi porušení“
+```sql
+SELECT order_ref, COUNT(*) AS cnt
+FROM payments
+WHERE order_ref = 'ORD-1001'
+GROUP BY order_ref
+HAVING COUNT(*) > 1;
+```
+* `[POZOROVÁNO]` Při 0 i 1 záznamu **žádný řádek**, při 2 záznamech řádek `ORD-1001 / 2`. Bez `WHERE` stejné chování.
+* `[VÝKLAD]` Prázdný výsledek nerozliší „nic se nezapsalo“ od „je to v pořádku“. `GROUP BY` na prázdné množině nevytvoří žádnou skupinu, `HAVING` to nezmění.
+
+### Dotaz 3: varianta s `HAVING`
 ```sql
 SELECT order_ref, COUNT(*) AS cnt
 FROM payments
 GROUP BY order_ref
-HAVING COUNT(*) > 1;
+HAVING COUNT(*) <> 0 OR COUNT(*) > 1;
 ```
-* **Slabina:** Stejná jako u falešně zelených testů z Vacation API – prázdný výsledek znamená „OK“ i tehdy, když se do databáze nezapsalo vůbec nic.
-* **Pokusy o úpravu:**
-  * Přidání `WHERE order_ref = 'ORD-1001'` problém nevyřešilo (při 0 a 1 záznamu nevrací nic, při 2 vrací `2` `[POZOROVÁNO]`).
-  * Použití `HAVING COUNT(*) <> 0 OR COUNT(*) > 1` rozlišuje 0 od 1 (vrací `ORD-1001 / 1` a `ORD-1001 / 2`, při prázdné tabulce nic), ale výsledek se musí interpretovat – nejde o přímý pass/fail dotaz.
+* `[POZOROVÁNO]` 0 záznamů: žádný řádek. 1 záznam: `ORD-1001 / 1`. 2 záznamy: `ORD-1001 / 2`.
+* `[VÝKLAD]` Rozliší 0 od 1, ale výsledek se musí interpretovat, takže to není přímý pass/fail. Část `OR COUNT(*) > 1` je zbytečná.
 
-#### B) Složitější dotaz od AI (`DISTINCT`) `/AI`
+### Dotaz 4: `DISTINCT` `/AI`
 ```sql
-SELECT 
+SELECT
     COUNT(*) AS celkem_radku,
     COUNT(*) - COUNT(DISTINCT order_ref) AS pocet_duplicit
-FROM payments;
-```
-* **Zajímavý nález (skrytá díra):** Sloupec `pocet_duplicit` vrací při 0 záznamech `0` a při 1 záznamu také `0`. S filtrem `WHERE order_ref = 'ORD-1001'` je `COUNT(DISTINCT order_ref)` vždy 0 nebo 1, takže `pocet_duplicit` jen kopíruje `celkem_radku - 1` a při nule se vynuluje. Kdyby test hlídal jen tento sloupec, byl by falešně zelený (zachraňuje ho jen první sloupec).
-* **[POZOROVÁNO]:** `(0/0, 1/0)`, při 2 záznamech `(2/1)`. Řádek pro 3× `ORD-1001` v tabulce od AI je `[AI, neověřeno]`.
-* **Lekce:** AI dala složitější řešení, než bylo potřeba, a to mělo skrytou slabinu. Nejlepší test je ten nejjednodušší, který umí selhat.
-
-#### C) Závěrečné řešení (`COUNT(*)`)
-```sql
-SELECT COUNT(*) AS pocet_vyskytu
 FROM payments
 WHERE order_ref = 'ORD-1001';
 ```
-* **Proč je to správně:**
-  * Test očekává přesně `1` (`cnt = 1`).
-  * Je červený při `0` (zápis se ztratil) i při `2+` (duplicita).
-  * Nepotřebuje `GROUP BY`, `HAVING` ani `DISTINCT`.
-* **Pozor na filtr `WHERE`:** Bez podmínky `WHERE` by `COUNT(*)` počítal řádky všech objednávek a rozbil by test, jakmile by v tabulce přibyl jiný klíč.
+* `[POZOROVÁNO]` 0 záznamů: `0 / 0`. 1 záznam: `1 / 0`. 2 záznamy: `2 / 1`.
+* `[VÝKLAD]` S filtrem `WHERE` je `COUNT(DISTINCT order_ref)` vždy 0 nebo 1, takže `pocet_duplicit` je při 0 i při 1 záznamu stejně `0`. Kdyby test hlídal jen tento sloupec, byl by při ztraceném zápisu falešně zelený. Zachraňuje ho první sloupec.
+* Řádek pro 3× `ORD-1001` v tabulce od AI: `[AI, neověřeno]`.
+
+### Přehled (stavy tabulky pro `ORD-1001`)
+
+| Stav | Dotaz 1 `COUNT(*)` | Dotaz 2 `HAVING > 1` | Dotaz 3 `HAVING <> 0 OR > 1` | Dotaz 4 `/AI` (celkem / duplicity) |
+| :--- | :--- | :--- | :--- | :--- |
+| 0 záznamů | řádek s hodnotou `0` | žádný řádek | žádný řádek | `0 / 0` |
+| 1 záznam (očekáváno) | `1` | žádný řádek | `ORD-1001 / 1` | `1 / 0` |
+| 2 záznamy (duplicita) | `2` | `ORD-1001 / 2` | `ORD-1001 / 2` | `2 / 1` |
+| 3 záznamy | neověřeno | neověřeno | neověřeno | neověřeno `/AI` |
+
+**Lekce:** nejlepší test je ten nejjednodušší, který umí selhat. Dotaz od AI byl složitější, než bylo potřeba, a jeho druhý sloupec sám o sobě nestačí.
 
 ---
 
-## 4. Přehledové tabulky chování dotazů
+## 4. Otázky na analytika
 
-### Původní srovnání (`COUNT(*)` vs. `GROUP BY ... HAVING`)
-
-| Stav tabulky | `COUNT(*)` | `GROUP BY ... HAVING` |
-| :--- | :--- | :--- |
-| 2× `ORD-1001` | `2` | řádek `ORD-1001` / `2` |
-| prázdná (po `DELETE`) | řádek s hodnotou `0` | **nic** |
-| 1× `ORD-1001` (po smazání `id = 2`) | `1` | **nic** |
-
-### Kompletní matice stavů 0 / 1 / 2 pro všechny tři dotazy
-
-| Stav tabulky (`ORD-1001`) | `COUNT(*)` (s `WHERE`) | `GROUP BY ... HAVING > 1` | `DISTINCT` (`celkem` / `duplicity`) `/AI` |
-| :--- | :--- | :--- | :--- |
-| **0 záznamů** (prázdná) | `0` | *(nic / prázdný výsledek)* | `0` / `0` *(falešně zelené pro 2. sloupec)* |
-| **1 záznam** (očekávaný stav) | `1` | *(nic / prázdný výsledek)* | `1` / `0` *(falešně zelené pro 2. sloupec)* |
-| **2 záznamy** (duplicita) | `2` | `ORD-1001` \| `2` | `2` / `1` |
+* `[OTÁZKA NA ANALYTIKA]` Je `order_ref` obchodní klíč, který musí být unikátní?
+* `[OTÁZKA NA ANALYTIKA]` Má opakované stejné `POST` vytvořit jeden záznam (idempotence), nebo vrátit chybu? Očekávání `cnt = 1` je zatím moje domněnka.
+* `[POZOROVÁNO]` Tabulka `payments` nemá omezení `UNIQUE` na `order_ref`, takže databáze dva řádky se stejným klíčem přijala.
 
 ---
 
-## 5. Zaznamenané chyby syntaxe (SQLite)
-* **Chybný operátor `=>` místo `>=`:**
-  ```text
-  Parse error near line 153: near ">": syntax error
-    FROM payments GROUP BY order_ref HAVING COUNT(*) => 0;
-                                        error here ---^
-  ```
-* **Překlep `form` místo `FROM`:**
-  ```text
-  near "form": syntax error
-  ```
+## 5. Chybové hlášky (SQLite)
+
+* `[DOPLNIT RUČNĚ]` Doslovná hláška pro `HAVING COUNT(*) => 0;`, zkopírovaná z terminálu (ne přepsaná).
