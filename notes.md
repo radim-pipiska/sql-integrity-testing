@@ -164,7 +164,9 @@ SELECT * FROM payments_u;
 
 * Hláška pro [`HAVING COUNT(*) => 0;`](screenshots/HAVING_COUNT_Syntax_Error.png):
 ```text
-[DOPLNIT RUČNĚ: doslovný text zkopírovaný z terminálu, včetně všech řádků]
+Parse error near line 22: near ">": syntax error
+   = 'ORD-1001' GROUP BY order_ref HAVING COUNT(*) => 1;
+                                      error here ---^
 ```
 * Hláška při porušení unikátního klíče v `payments_u` (zkopírováno z výstupu):
 ```text
