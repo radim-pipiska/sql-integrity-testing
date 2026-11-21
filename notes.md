@@ -57,7 +57,7 @@ PRAGMA foreign_keys;       -- po zapnutí 1
 * `[POZOROVÁNO]` Tabulka s `id INTEGER PRIMARY KEY` (bez `AUTOINCREMENT`): po `DELETE FROM payments;` dostaly nově vložené řádky znovu `id` `1` a `2`.
 * `[POZOROVÁNO]` Tabulka znovu vytvořená s `id INTEGER PRIMARY KEY AUTOINCREMENT`: vložené dva řádky (`id` 1, 2), `DELETE FROM payments;`, opětovné vložení dvou řádků. `SELECT * FROM payments;` ukázal `id` `3` a `4`.
 * `[POZOROVÁNO]` Tabulka `payments` byla pro druhý pokus znovu vytvořena (`DROP` + `CREATE`), takže v databázi už není v původní podobě bez `AUTOINCREMENT`.
-* `[DOPLNIT RUČNĚ]` Názvy souborů se schématem bez `AUTOINCREMENT` a s ním, aby šlo obě verze znovu vytvořit.
+* Schéma `db/payments.sql` bez `AUTOINCREMENT` a s ním `db/payments_autoinc.sql`. S `UNIQUE` je ve schématu `db/schema_payments_unique.sql`.
 * `[VÝKLAD]` V pozorovaném případě se `id` s `AUTOINCREMENT` nezopakovala. Test, který po úklidu hledá záznam podle `id`, může u tabulky bez `AUTOINCREMENT` narazit na jiný, nově vytvořený řádek se stejným `id`.
 
 ---
