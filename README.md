@@ -34,7 +34,7 @@ Stav k 21. 11. 2026, rozpracováno.
 1. Stáhněte nástroje SQLite (`sqlite-tools`) z [sqlite.org](https://www.sqlite.org/download.html).
 2. V terminálu přejděte do složky `db/` a spusťte databázi se souborem: `sqlite3 test.db`.
 3. Ověřte, kde jste: `.databases` (musí ukázat cestu k `test.db`).
-4. Načtěte schéma: `.read [DOPLNIT RUČNĚ: název souboru]`.
+4. Načtěte schéma: `.read payments_unique.sql`.
 5. Postupujte podle dotazů v `notes.md`.
 
 ## Plánováno
