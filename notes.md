@@ -147,7 +147,7 @@ SELECT * FROM payments_u;
 * `[VÝKLAD]` `OR IGNORE` je nástroj vývojáře: zbavuje chyb. Pro testera se hlasitý signál (chyba z databáze) změnil na tichý.
 * `[HYPOTÉZA]` Po použití `OR IGNORE` v aplikaci už test nepozná z chyby, že se druhý zápis nepovedl, a navenek to může vypadat jako úspěch. Závisí na implementaci API.
 * `[VÝKLAD]` Aserce `cnt = 1` by na `payments_u` po konfliktním zápisu prošla (v tabulce je 1 řádek), ale nezachytí, že hodnoty zůstaly původní. Test musí kontrolovat i `amount_cents` a `status`. Jaké hodnoty má očekávat, určuje specifikace, ne pozorované chování databáze.
-* `[OVĚŘIT]` Spustit `SELECT COUNT(*) AS cnt FROM payments_u WHERE order_ref = 'ORD-1001';` po konfliktním zápisu (zatím nespuštěno).
+* `[POZOROVÁNO]` `SELECT COUNT(*) AS cnt FROM payments_u WHERE order_ref = 'ORD-1001';` po konfliktním zápisu vrátil `1`. Aserce `cnt = 1` tedy prošla, přestože se nové hodnoty (`99900`, `PAID`) zahodily.
 
 ---
 
