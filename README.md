@@ -44,4 +44,4 @@ Stav k 21. 11. 2026, rozpracováno.
 
 ## Licence
 
-MIT, viz soubor `LICENSE`. Licence se nevztahuje na kopii WSDL služby třetí strany, kterou SoapUI ukládá do projektu.
+MIT, viz soubor `LICENSE`. Licence se nevztahuje na databázi SQLite (software třetí strany), která je součástí projektu.
