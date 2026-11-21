@@ -1,4 +1,3 @@
-
 DROP TABLE IF EXISTS payments;
 CREATE TABLE payments (
   id           INTEGER PRIMARY KEY,
