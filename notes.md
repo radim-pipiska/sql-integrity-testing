@@ -162,7 +162,7 @@ SELECT * FROM payments_u;
 
 ## 6. Chybové hlášky (SQLite)
 
-* Hláška pro [`HAVING COUNT(*) => 0;`](screenshots/HAVING_COUNT_Syntax_Error.png):
+* Hláška pro [`HAVING COUNT(*) => 1;`](screenshots/HAVING_COUNT_Syntax_Error.png):
 ```text
 Parse error near line 22: near ">": syntax error
    = 'ORD-1001' GROUP BY order_ref HAVING COUNT(*) => 1;
