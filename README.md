@@ -10,7 +10,7 @@ Stav k 21. 11. 2026, rozpracováno.
 
 * [`notes.md`](notes.md): hlavní výstup. Pozorování, dotazy, tabulky chování a otázky na analytika.
 * [`screenshots/`](screenshots/): výstupy z terminálu, na které se `notes.md` odkazuje.
-* [`db/`](db/): názvy souborů se schématy. Payments bez AUTOINCREMENT `payments.sql`, `payments_autoinc.sql` s AUTOINCREMENT, `schema_payments_unique.sql` payments s UNIQUE]`
+* [`db/`](db/): názvy souborů se schématy. Payments bez AUTOINCREMENT `payments.sql`, `payments_autoinc.sql` s AUTOINCREMENT, `payments_unique.sql` payments s UNIQUE`
 
 ## Hlavní zjištění
 
