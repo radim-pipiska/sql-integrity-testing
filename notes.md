@@ -51,11 +51,11 @@ PRAGMA foreign_keys;       -- po zapnutí 1
 * `[POZOROVÁNO]` Výchozí hodnota `0`, po `= ON` hodnota `1`, po `.quit` a novém spuštění zase `0`.
 * `[POZOROVÁNO]` Po restartu byl výpis v jiném formátu (rámečková tabulka), protože jsem nenastavil `.mode column`. Nastavení výpisu tedy také platí jen pro jedno spojení.
 * `[HYPOTÉZA]` Test může být zelený jen proto, že běží na spojení s vypnutou kontrolou cizích klíčů.
-* `[OVĚŘIT]` V `payments` zatím žádný cizí klíč není. Sabotáž: tabulka s `FOREIGN KEY`, vložit osiřelý záznam při `foreign_keys` = 0 a = 1.
+* `[OVĚŘIT]` V `payments` zatím žádný cizí klíč není. Sabotáž: tabulka s `FOREIGN KEY`, vložit osiřelý záznam při `foreign_keys` = 0 a = 1 (ověřeno v sekci 7).
 
 ### Opakované `id` po smazání vs. `AUTOINCREMENT`
 * `[POZOROVÁNO]` Tabulka s `id INTEGER PRIMARY KEY` (bez `AUTOINCREMENT`): po `DELETE FROM payments;` dostaly nově vložené řádky znovu `id` `1` a `2`.
-* `[POZOROVÁNO]` Tabulka znovu vytvořená s `id INTEGER PRIMARY KEY AUTOINCREMENT`: vložené dva řádky (`id` 1, 2), `DELETE FROM payments;`, opětovné vložení dvou řádků. `SELECT * FROM payments;` ukázal `id` `3` a `4`.
+* `[POZOROVÁNO]` Tabulka znovu vytvořená s `id INTEGER PRIMARY KEY AUTOINCREMENT`: vložené dva řáky (`id` 1, 2), `DELETE FROM payments;`, opětovné vložení dvou řádků. `SELECT * FROM payments;` ukázal `id` `3` a `4`.
 * `[POZOROVÁNO]` Tabulka `payments` byla pro druhý pokus znovu vytvořena (`DROP` + `CREATE`), takže v databázi už není v původní podobě bez `AUTOINCREMENT`.
 * Schéma `db/payments.sql` bez `AUTOINCREMENT` a s ním `db/payments_autoinc.sql`. S `UNIQUE` je ve schématu `db/schema_payments_unique.sql`.
 * `[VÝKLAD]` V pozorovaném případě se `id` s `AUTOINCREMENT` nezopakovala. Test, který po úklidu hledá záznam podle `id`, může u tabulky bez `AUTOINCREMENT` narazit na jiný, nově vytvořený řádek se stejným `id`.
@@ -146,29 +146,3 @@ SELECT * FROM payments_u;
 * `[POZOROVÁNO]` Tabulka `payments` nemá `UNIQUE` na `order_ref` a databáze dva řádky se stejným klíčem přijala (na rozdíl od `payments_u`).
 * `[VÝKLAD]` `OR IGNORE` je nástroj vývojáře: zbavuje chyb. Pro testera se hlasitý signál (chyba z databáze) změnil na tichý.
 * `[HYPOTÉZA]` Po použití `OR IGNORE` v aplikaci už test nepozná z chyby, že se druhý zápis nepovedl, a navenek to může vypadat jako úspěch. Závisí na implementaci API.
-* `[VÝKLAD]` Aserce `cnt = 1` by na `payments_u` po konfliktním zápisu prošla (v tabulce je 1 řádek), ale nezachytí, že hodnoty zůstaly původní. Test musí kontrolovat i `amount_cents` a `status`. Jaké hodnoty má očekávat, určuje specifikace, ne pozorované chování databáze.
-* `[POZOROVÁNO]` `SELECT COUNT(*) AS cnt FROM payments_u WHERE order_ref = 'ORD-1001';` po konfliktním zápisu vrátil `1`. Aserce `cnt = 1` tedy prošla, přestože se nové hodnoty (`99900`, `PAID`) zahodily.
-
----
-
-## 5. Otázky na analytika
-
-* `[OTÁZKA NA ANALYTIKA]` Je `order_ref` obchodní klíč, který musí být unikátní?
-* `[OTÁZKA NA ANALYTIKA]` Má opakované stejné `POST` vytvořit jeden záznam (idempotence), nebo vrátit chybu? Očekávání `cnt = 1` je zatím moje domněnka.
-* `[OTÁZKA NA ANALYTIKA]` Co se má stát, když přijde druhý požadavek se stejným klíčem, ale jinou částkou nebo stavem: odmítnout, přepsat záznam, nebo vrátit původní? Podle toho test očekává buď původní, nebo nové hodnoty.
-* `[OTÁZKA NA ANALYTIKA]` Má databáze `UNIQUE` na `order_ref`, nebo duplicitu hlídá jen aplikace?
-
----
-
-## 6. Chybové hlášky (SQLite)
-
-* Hláška pro [`HAVING COUNT(*) => 1;`](screenshots/HAVING_COUNT_Syntax_Error.png):
-```text
-Parse error near line 22: near ">": syntax error
-   = 'ORD-1001' GROUP BY order_ref HAVING COUNT(*) => 1;
-                                      error here ---^
-```
-* Hláška při porušení unikátního klíče v `payments_u` (zkopírováno z výstupu):
-```text
-Error near line 14: UNIQUE constraint failed: payments_u.order_ref
-```
