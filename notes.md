@@ -4,7 +4,7 @@ Stav k 22. 11. 2026. Data v tabulkách `payments`, `payments_u`, `orders` a `ord
 
 **Značky:** `[POZOROVÁNO]` = viděl jsem na vlastním výstupu · `[VÝKLAD]` = můj závěr z pozorování · `[HYPOTÉZA]` / `[OVĚŘIT]` = zatím nepodloženo · `[OTÁZKA NA ANALYTIKA]` · `/AI` = výstup AI, platí až po ověření spuštěním
 
-Falešně zelený = test prošel, přestože vada existuje (v terminologii ISTQB false-negative). Tento termín používám místo nejednoznačného 'falešně pozitivní'.
+*Falešně zelený = test prošel, přestože vada existuje (v terminologii ISTQB false-negative). Tento termín používám místo nejednoznačného `falešně pozitivní`.*
 
 ---
 
