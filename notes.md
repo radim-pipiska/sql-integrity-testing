@@ -172,3 +172,59 @@ Parse error near line 22: near ">": syntax error
 ```text
 Error near line 14: UNIQUE constraint failed: payments_u.order_ref
 ```
+
+---
+
+## 7. Cizí klíče (`FOREIGN KEY`) a osiřelé záznamy
+
+Testovací schéma pro ověření referenční integrity (tabulka `order_items` odkazuje na `orders(id)`):
+
+```sql
+DROP TABLE IF EXISTS order_items;
+DROP TABLE IF EXISTS orders;
+
+CREATE TABLE orders (
+  id        INTEGER PRIMARY KEY,
+  order_ref TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE order_items (
+  id       INTEGER PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES orders(id),
+  sku      TEXT NOT NULL
+);
+
+INSERT INTO orders (id, order_ref) VALUES (1, 'ORD-1001');
+```
+
+### Dotaz na hledání osiřelých záznamů („najdi porušení“)
+```sql
+SELECT i.id, i.order_id
+FROM order_items i
+LEFT JOIN orders o ON o.id = i.order_id
+WHERE o.id IS NULL;
+```
+
+### Pozorované chování podle stavu `PRAGMA foreign_keys`
+
+| Stav `foreign_keys` | Pokus o `INSERT` osiřelého záznamu | Výsledek `INSERT` | Výsledek dotazu na osiřelé záznamy (`LEFT JOIN ... IS NULL`) | Výsledek `PRAGMA foreign_key_check;` |
+| :--- | :--- | :--- | :--- | :--- |
+| **`0` (výchozí / OFF)** | `INSERT INTO order_items (order_id, sku) VALUES (999, 'SKU-1');` | **Prošel bez chyby** (záznam `id: 1, order_id: 999` se uložil do tabulky) | Vrátil `1` řádek (`1 \| 999`) | *(spuštěno až po zapnutí, ale detekuje tento řádek)* |
+| **`1` (zapnuto / ON)** | `INSERT INTO order_items (order_id, sku) VALUES (998, 'SKU-2');` | **Selhal chybou** (záznam se neuložil) | Stále vrací dříve vložený řádek `1 \| 999` (zapnutí kontroly staré chyby neopraví) | Vrátil řádek: `order_items \| 1 \| orders \| 0` |
+
+### Doslovné chybové hlášky (SQLite)
+* Pokus o vložení neexistujícího `order_id` při `PRAGMA foreign_keys = ON`:
+```text
+Error near line 11: FOREIGN KEY constraint failed
+```
+* Chybné zavolání `foreign_key_check` bez klíčového slova `PRAGMA`:
+```text
+Parse error near line 13: near "foreign_key_check": syntax error
+  foreign_key_check;
+  ^--- error here
+```
+
+### Poznatky a využití v QA testech
+* `[POZOROVÁNO]` Definice `REFERENCES orders(id)` v `CREATE TABLE` sama o sobě nezabrání vzniku osiřelých záznamů, dokud není na daném připojení explicitně zapnuto `PRAGMA foreign_keys = ON;`.
+* `[POZOROVÁNO]` Zapnutí `PRAGMA foreign_keys = ON` chrání databázi pouze pro budoucí operace, ale historické sirotky (vložené v době, kdy byla kontrola vypnutá) nesmaže ani neopraví.
+* `[VÝKLAD]` **Jak použít `PRAGMA foreign_key_check;` v testech:** Příkaz proskenuje uložená data proti definicím cizích klíčů a vypíše všechna porušení (tabulku, `rowid` vadného záznamu, cílovou rodičovskou tabulku a index klíče `fkid`). V testování (např. po migraci dat nebo po dávkovém importu, kdy bývá kontrola klíčů dočasně vypnutá) slouží jako rychlý auditní test: **prázdný výsledek = PASS (integrita v pořádku), jakýkoliv vrácený řádek = FAIL (v databázi jsou osiřelá data)**.
