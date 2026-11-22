@@ -216,7 +216,9 @@ WHERE o.id IS NULL;
 | 5 | `1` | `SELECT * FROM order_items;` | stále jen `1 \| 999 \| SKU-1` (998 se neuložil, 999 nezmizel) |
 | 6 | `1` | `PRAGMA foreign_key_check;` | `order_items \| 1 \| orders \| 0` |
 | – | `1` | dotaz na osiřelé záznamy po zapnutí | `[OVĚŘIT]` nespuštěno (v kroku 5 jen `SELECT *`) |
-| – | `0` | `PRAGMA foreign_key_check;` na spojení, kde není zapnuto `ON` | `[OVĚŘIT]` nespuštěno |
+| 7 | nová relace (`foreign_keys` nevypsáno, dříve vždy `0`) | `PRAGMA foreign_key_check;` s osiřelým řádkem | `order_items \| 1 \| orders \| 0` |
+| 8 | stejná | po `DELETE FROM order_items WHERE order_id = 999;` | žádné řádky (v `.mode` bez nastavení jen hlavička) |
+| 9 | stejná | po `DELETE FROM order_items;`, `SELECT COUNT(*) FROM order_items;` | kontrola bez řádků, `COUNT(*) = 0` |
 
 ### Doslovné hlášky (SQLite)
 ```text
@@ -236,3 +238,7 @@ Parse error near line 13: near "foreign_key_check": syntax error
 * `[VÝKLAD]` Zapnutá kontrola chrání nové `INSERT`y. Chování při `UPDATE` a `DELETE` jsem nezkoušel: `[OVĚŘIT]`.
 * `[VÝKLAD]` Prázdný výsledek dotazu na osiřelé záznamy i `PRAGMA foreign_key_check;` by byl falešně zelený, kdyby se do tabulek nezapsalo nic. Stejná slabina jako u kontroly duplicit (sekce 3). Kontrolu je třeba doplnit o očekávaný počet řádků (např. `SELECT COUNT(*) FROM order_items WHERE order_id = 1;`). `[OVĚŘIT]` sabotáží: vyčistit osiřelý řádek a ověřit, že obě kontroly vrátí prázdný výsledek.
 * `[HYPOTÉZA]` Použití `PRAGMA foreign_key_check;` jako auditního kroku po migraci nebo dávkovém importu (kdy bývá kontrola dočasně vypnutá). Nepozorováno, zatím jen obecná úvaha.
+* `[POZOROVÁNO]` `PRAGMA foreign_key_check;` osiřelý řádek našel i bez zapnutého `foreign_keys = ON` (předpoklad `0` v nové relaci, nevypsáno).
+* `[POZOROVÁNO]` Výsledek kontroly se mění podle aktuálních dat, neukládá se.
+* `[VÝKLAD]` Kontrola nad prázdnou tabulkou je prázdná, stejně jako nad tisíci platnými řádky. Aby test něco dokazoval, musí ověřit i očekávaný počet řádků.
+* `[HYPOTÉZA]` Prázdný výsledek se vypisuje různě podle `.mode`. `[OVĚŘIT]`.
