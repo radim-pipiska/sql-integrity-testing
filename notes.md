@@ -205,7 +205,7 @@ LEFT JOIN orders o ON o.id = i.order_id
 WHERE o.id IS NULL;
 ```
 
-### Postup v jedné relaci (pozorované výsledky)
+### Postup v jedné relaci ([pozorované výsledky](screenshots/Foreign_keys_and_orphaned_records.png))
 
 | Krok | `foreign_keys` | Příkaz | Pozorovaný výsledek |
 | :--- | :--- | :--- | :--- |
