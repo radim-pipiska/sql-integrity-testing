@@ -50,8 +50,8 @@ PRAGMA foreign_keys;       -- po zapnutí 1
 ```
 * `[POZOROVÁNO]` Výchozí hodnota `0`, po `= ON` hodnota `1`, po `.quit` a novém spuštění zase `0`.
 * `[POZOROVÁNO]` Po restartu byl výpis v jiném formátu (rámečková tabulka), protože jsem nenastavil `.mode column`. Nastavení výpisu tedy také platí jen pro jedno spojení.
-* `[HYPOTÉZA]` Test může být zelený jen proto, že běží na spojení s vypnutou kontrolou cizích klíčů.
-* `[POZOROVÁNO]` V `payments` zatím žádný cizí klíč není. Sabotáž: tabulka s `FOREIGN KEY`, vložit osiřelý záznam při `foreign_keys` = 0 a = 1.
+* `[POZOROVÁNO]` V `payments` žádný cizí klíč není. Sabotáž s cizím klíčem je v sekci 7.
+* `[VÝKLAD]` Při `foreign_keys = 0` databáze osiřelý záznam přijala (sekce 7). Test, který se na cizí klíč spoléhá jako na ochranu, proto musí ověřit, že je kontrola na daném spojení zapnutá.
 
 ### Opakované `id` po smazání vs. `AUTOINCREMENT`
 * `[POZOROVÁNO]` Tabulka s `id INTEGER PRIMARY KEY` (bez `AUTOINCREMENT`): po `DELETE FROM payments;` dostaly nově vložené řádky znovu `id` `1` a `2`.
