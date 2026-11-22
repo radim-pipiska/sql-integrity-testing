@@ -177,7 +177,7 @@ Error near line 14: UNIQUE constraint failed: payments_u.order_ref
 
 ## 7. Cizí klíče (`FOREIGN KEY`) a osiřelé záznamy
 
-Testovací schéma pro ověření referenční integrity (tabulka `order_items` odkazuje na `orders(id)`):
+Schéma (`[DOPLNIT RUČNĚ: název souboru se schématem, např. db/schema_fk.sql]`): tabulka `order_items` odkazuje na `orders(id)`.
 
 ```sql
 DROP TABLE IF EXISTS order_items;
@@ -205,26 +205,34 @@ LEFT JOIN orders o ON o.id = i.order_id
 WHERE o.id IS NULL;
 ```
 
-### Pozorované chování podle stavu `PRAGMA foreign_keys`
+### Postup v jedné relaci (pozorované výsledky)
 
-| Stav `foreign_keys` | Pokus o `INSERT` osiřelého záznamu | Výsledek `INSERT` | Výsledek dotazu na osiřelé záznamy (`LEFT JOIN ... IS NULL`) | Výsledek `PRAGMA foreign_key_check;` |
-| :--- | :--- | :--- | :--- | :--- |
-| **`0` (výchozí / OFF)** | `INSERT INTO order_items (order_id, sku) VALUES (999, 'SKU-1');` | **Prošel bez chyby** (záznam `id: 1, order_id: 999` se uložil do tabulky) | Vrátil `1` řádek (`1 \| 999`) | *(spuštěno až po zapnutí, ale detekuje tento řádek)* |
-| **`1` (zapnuto / ON)** | `INSERT INTO order_items (order_id, sku) VALUES (998, 'SKU-2');` | **Selhal chybou** (záznam se neuložil) | Stále vrací dříve vložený řádek `1 \| 999` (zapnutí kontroly staré chyby neopraví) | Vrátil řádek: `order_items \| 1 \| orders \| 0` |
+| Krok | `foreign_keys` | Příkaz | Pozorovaný výsledek |
+| :--- | :--- | :--- | :--- |
+| 1 | `0` | `PRAGMA foreign_keys;` | `0` |
+| 2 | `0` | `INSERT INTO order_items (order_id, sku) VALUES (999, 'SKU-1');` | bez chyby; `SELECT * FROM order_items;` ukázal `1 \| 999 \| SKU-1` |
+| 3 | `0` | dotaz na osiřelé záznamy | `1 \| 999` |
+| 4 | `1` (po `= ON`) | `INSERT INTO order_items (order_id, sku) VALUES (998, 'SKU-2');` | chyba `FOREIGN KEY constraint failed` |
+| 5 | `1` | `SELECT * FROM order_items;` | stále jen `1 \| 999 \| SKU-1` (998 se neuložil, 999 nezmizel) |
+| 6 | `1` | `PRAGMA foreign_key_check;` | `order_items \| 1 \| orders \| 0` |
+| – | `1` | dotaz na osiřelé záznamy po zapnutí | `[OVĚŘIT]` nespuštěno (v kroku 5 jen `SELECT *`) |
+| – | `0` | `PRAGMA foreign_key_check;` na spojení, kde není zapnuto `ON` | `[OVĚŘIT]` nespuštěno |
 
-### Doslovné chybové hlášky (SQLite)
-* Pokus o vložení neexistujícího `order_id` při `PRAGMA foreign_keys = ON`:
+### Doslovné hlášky (SQLite)
 ```text
 Error near line 11: FOREIGN KEY constraint failed
 ```
-* Chybné zavolání `foreign_key_check` bez klíčového slova `PRAGMA`:
 ```text
 Parse error near line 13: near "foreign_key_check": syntax error
   foreign_key_check;
   ^--- error here
 ```
+* `[POZOROVÁNO]` Druhá hláška vznikla zadáním `foreign_key_check;` bez slova `PRAGMA`. Správně je `PRAGMA foreign_key_check;`.
 
-### Poznatky a využití v QA testech
-* `[POZOROVÁNO]` Definice `REFERENCES orders(id)` v `CREATE TABLE` sama o sobě nezabrání vzniku osiřelých záznamů, dokud není na daném připojení explicitně zapnuto `PRAGMA foreign_keys = ON;`.
-* `[POZOROVÁNO]` Zapnutí `PRAGMA foreign_keys = ON` chrání databázi pouze pro budoucí operace, ale historické sirotky (vložené v době, kdy byla kontrola vypnutá) nesmaže ani neopraví.
-* `[VÝKLAD]` **Jak použít `PRAGMA foreign_key_check;` v testech:** Příkaz proskenuje uložená data proti definicím cizích klíčů a vypíše všechna porušení (tabulku, `rowid` vadného záznamu, cílovou rodičovskou tabulku a index klíče `fkid`). V testování (např. po migraci dat nebo po dávkovém importu, kdy bývá kontrola klíčů dočasně vypnutá) slouží jako rychlý auditní test: **prázdný výsledek = PASS (integrita v pořádku), jakýkoliv vrácený řádek = FAIL (v databázi jsou osiřelá data)**.
+### Poznatky
+* `[POZOROVÁNO]` Definice `REFERENCES orders(id)` sama osiřelý záznam nezabrání: při `foreign_keys = 0` databáze `INSERT` s `order_id = 999` přijala (kroky 2 a 3).
+* `[POZOROVÁNO]` Po zapnutí `foreign_keys = ON` selhal nový `INSERT` s neexistujícím `order_id` a dříve vložený osiřelý řádek zůstal (kroky 4 a 5). Zapnutí kontroly tedy starý osiřelý řádek neopravilo ani nesmazalo.
+* `[POZOROVÁNO]` `PRAGMA foreign_key_check;` vrátil sloupce `table`, `rowid`, `parent`, `fkid` a řádek `order_items | 1 | orders | 0`.
+* `[VÝKLAD]` Zapnutá kontrola chrání nové `INSERT`y. Chování při `UPDATE` a `DELETE` jsem nezkoušel: `[OVĚŘIT]`.
+* `[VÝKLAD]` Prázdný výsledek dotazu na osiřelé záznamy i `PRAGMA foreign_key_check;` by byl falešně zelený, kdyby se do tabulek nezapsalo nic. Stejná slabina jako u kontroly duplicit (sekce 3). Kontrolu je třeba doplnit o očekávaný počet řádků (např. `SELECT COUNT(*) FROM order_items WHERE order_id = 1;`). `[OVĚŘIT]` sabotáží: vyčistit osiřelý řádek a ověřit, že obě kontroly vrátí prázdný výsledek.
+* `[HYPOTÉZA]` Použití `PRAGMA foreign_key_check;` jako auditního kroku po migraci nebo dávkovém importu (kdy bývá kontrola dočasně vypnutá). Nepozorováno, zatím jen obecná úvaha.
