@@ -1,10 +1,10 @@
 # Poznámky: testování databází (SQLite)
 
-Stav k 22. 11. 2026. Data v tabulkách `payments`, `payments_u`, `orders` a `order_items` jsou **simulovaná ručními `INSERT`y**, žádné reálné API se tu nevolá. `[POZOROVÁNO]` se proto týká chování SQLite a mých dotazů, ne chování nějaké služby.
+Stav k 23. 11. 2026. Data v tabulkách `payments`, `payments_u`, `orders` a `order_items` jsou **simulovaná ručními `INSERT`y**, žádné reálné API se tu nevolá. `[POZOROVÁNO]` se proto týká chování SQLite a mých dotazů, ne chování nějaké služby.
 
 **Značky:** `[POZOROVÁNO]` = viděl jsem na vlastním výstupu · `[VÝKLAD]` = můj závěr z pozorování · `[HYPOTÉZA]` / `[OVĚŘIT]` = zatím nepodloženo · `[OTÁZKA NA ANALYTIKA]` · `/AI` = výstup AI, platí až po ověření spuštěním
 
-*Falešně zelený = test prošel, přestože vada existuje (v terminologii ISTQB false-negative). Tento termín používám místo nejednoznačného 'falešně pozitivní'.*
+*[OVĚŘIT] Falešně zelený = test prošel, přestože vada existuje (v terminologii ISTQB false-negative). Tento termín používám místo nejednoznačného 'falešně pozitivní'.*
 
 ---
 
@@ -179,7 +179,7 @@ Error near line 14: UNIQUE constraint failed: payments_u.order_ref
 
 ## 7. Cizí klíče (`FOREIGN KEY`) a osiřelé záznamy
 
-Schéma (`[DOPLNIT RUČNĚ: název souboru se schématem, např. db/schema_fk.sql]`): tabulka `order_items` odkazuje na `orders(id)`.
+Schéma (`db/schema_fk.sql`): tabulka `order_items` odkazuje na `orders(id)`.
 
 ```sql
 DROP TABLE IF EXISTS order_items;
@@ -219,7 +219,7 @@ WHERE o.id IS NULL;
 | 6 | `1` | `PRAGMA foreign_key_check;` | `order_items \| 1 \| orders \| 0` |
 | – | `1` | dotaz na osiřelé záznamy po zapnutí | `[OVĚŘIT]` nespuštěno (v kroku 5 jen `SELECT *`) |
 | 7 | nová relace (`foreign_keys` nevypsáno, dříve vždy `0`) | `PRAGMA foreign_key_check;` s osiřelým řádkem | `order_items \| 1 \| orders \| 0` |
-| 8 | stejná | po `DELETE FROM order_items WHERE order_id = 999;` | žádné řádky (v `.mode` bez nastavení jen hlavička) |
+| 8 | stejná | po `DELETE FROM order_items WHERE order_id = 999;` | žádné řádky (v režimu bez .mode column jen hlavička) |
 | 9 | stejná | po `DELETE FROM order_items;`, `SELECT COUNT(*) FROM order_items;` | kontrola bez řádků, `COUNT(*) = 0` |
 
 ### Doslovné hlášky (SQLite)
@@ -244,3 +244,24 @@ Parse error near line 13: near "foreign_key_check": syntax error
 * `[POZOROVÁNO]` Výsledek kontroly se mění podle aktuálních dat, neukládá se.
 * `[VÝKLAD]` Kontrola nad prázdnou tabulkou je prázdná, stejně jako nad tisíci platnými řádky. Aby test něco dokazoval, musí ověřit i očekávaný počet řádků.
 * `[HYPOTÉZA]` Prázdný výsledek se vypisuje různě podle `.mode`. `[OVĚŘIT]`.
+
+### Jedna kontrola: počet položek a osiřelé záznamy
+
+Kontrola vždy vrátí jeden řádek se dvěma čísly. Očekávání (`1` položka, `0` osiřelých) pochází ze vstupu testu: v simulaci vkládám jednu položku pro objednávku 1.
+
+```sql
+SELECT
+  (SELECT COUNT(*) FROM order_items WHERE order_id = 1) AS order_1_items,
+  (SELECT COUNT(*) FROM order_items WHERE order_id NOT IN (SELECT id FROM orders)) AS orphaned_items;
+```
+
+| Stav `order_items` | Pozorovaný výsledek | Pass/fail při očekávání `1` a `0` |
+| :--- | :--- | :--- |
+| prázdná | `0 \| 0` | FAIL (chybí položka) |
+| 1 platná položka (`order_id = 1`) | `1 \| 0` | PASS |
+| 1 osiřelá položka (`order_id = 999`) | `0 \| 1` | FAIL |
+
+* `[POZOROVÁNO]` `foreign_keys` bylo před pokusem `0`.
+* `[POZOROVÁNO]` `SELECT COUNT(*) FROM pragma_foreign_key_check;` se dá zavolat. Výstup `0`. Detekci s osiřelým řádkem zatím `[OVĚŘIT]`.
+* `[VÝKLAD]` Dotaz s agregací bez `GROUP BY` vrací vždy jeden řádek, takže se „nic“ liší od „v pořádku“.
+* `[OVĚŘIT]` `NOT IN` při `NULL` v poddotazu.
