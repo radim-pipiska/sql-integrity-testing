@@ -245,7 +245,7 @@ Parse error near line 13: near "foreign_key_check": syntax error
 * `[VÝKLAD]` Kontrola nad prázdnou tabulkou je prázdná, stejně jako nad tisíci platnými řádky. Aby test něco dokazoval, musí ověřit i očekávaný počet řádků.
 * `[HYPOTÉZA]` Prázdný výsledek se vypisuje různě podle `.mode`. `[OVĚŘIT]`.
 
-### Jedna kontrola: počet položek a osiřelé záznamy
+### [Jedna kontrola:](screenshots/Single_Check_Item_Count_and_Orphaned_Records.png) počet položek a osiřelé záznamy
 
 Kontrola vždy vrátí jeden řádek se dvěma čísly. Očekávání (`1` položka, `0` osiřelých) pochází ze vstupu testu: v simulaci vkládám jednu položku pro objednávku 1.
 
@@ -265,3 +265,6 @@ SELECT
 * `[POZOROVÁNO]` `SELECT COUNT(*) FROM pragma_foreign_key_check;` se dá zavolat. Výstup `0`. Detekci s osiřelým řádkem zatím `[OVĚŘIT]`.
 * `[VÝKLAD]` Dotaz s agregací bez `GROUP BY` vrací vždy jeden řádek, takže se „nic“ liší od „v pořádku“.
 * `[OVĚŘIT]` `NOT IN` při `NULL` v poddotazu.
+* `[POZOROVÁNO]` S osiřelým řádkem `20 | 999 | SKU-ORPHAN` a `foreign_keys = 0` vrátil `SELECT COUNT(*) FROM pragma_foreign_key_check;` hodnotu `1` a `LEFT JOIN` dotaz řádek `20 | 999`.
+* `[POZOROVÁNO]` `SELECT 999 NOT IN (1, 2)` vrátilo `1`. `SELECT 999 NOT IN (1, NULL)` zobrazilo v `.mode column` prázdnou hodnotu. `[OVĚŘIT]` přes `typeof(...)`.
+* `[VÝKLAD]` `NOT IN` s `NULL` v poddotazu osiřelé řádky nenajde (falešně zelená kontrola). V tomto schématu k tomu nedojde, protože `orders.id` je `INTEGER PRIMARY KEY`. Bezpečnější jsou `LEFT JOIN ... IS NULL` a `NOT EXISTS`. Zatím neověřeno na tabulkách s `NULL`.
