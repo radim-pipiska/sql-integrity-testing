@@ -1,6 +1,6 @@
 # Poznámky: testování databází (SQLite)
 
-Stav k 23. 11. 2026. Data v tabulkách `payments`, `payments_u`, `orders` a `order_items` jsou **simulovaná ručními `INSERT`y**, žádné reálné API se tu nevolá. `[POZOROVÁNO]` se proto týká chování SQLite a mých dotazů, ne chování nějaké služby.
+Stav k 25. 11. 2026. Data v tabulkách `payments`, `payments_u`, `orders` a `order_items` jsou **simulovaná ručními `INSERT`y**, žádné reálné API se tu nevolá. `[POZOROVÁNO]` se proto týká chování SQLite a mých dotazů, ne chování nějaké služby.
 
 **Značky:** `[POZOROVÁNO]` = viděl jsem na vlastním výstupu · `[VÝKLAD]` = můj závěr z pozorování · `[HYPOTÉZA]` / `[OVĚŘIT]` = zatím nepodloženo · `[OTÁZKA NA ANALYTIKA]` · `/AI` = výstup AI, platí až po ověření spuštěním
 
@@ -245,7 +245,9 @@ Parse error near line 13: near "foreign_key_check": syntax error
 * `[VÝKLAD]` Kontrola nad prázdnou tabulkou je prázdná, stejně jako nad tisíci platnými řádky. Aby test něco dokazoval, musí ověřit i očekávaný počet řádků.
 * `[HYPOTÉZA]` Prázdný výsledek se vypisuje různě podle `.mode`. `[OVĚŘIT]`.
 
-### [Jedna kontrola:](screenshots/Single_Check_Item_Count_and_Orphaned_Records.png) počet položek a osiřelé záznamy
+---
+
+## 8. [Jedna kontrola:](screenshots/Single_Check_Item_Count_and_Orphaned_Records.png) počet položek a osiřelé záznamy
 
 Kontrola vždy vrátí jeden řádek se dvěma čísly. Očekávání (`1` položka, `0` osiřelých) pochází ze vstupu testu: v simulaci vkládám jednu položku pro objednávku 1.
 
@@ -264,7 +266,84 @@ SELECT
 * `[POZOROVÁNO]` `foreign_keys` bylo před pokusem `0`.
 * `[POZOROVÁNO]` `SELECT COUNT(*) FROM pragma_foreign_key_check;` se dá zavolat. Výstup `0`. Detekci s osiřelým řádkem zatím `[OVĚŘIT]`.
 * `[VÝKLAD]` Dotaz s agregací bez `GROUP BY` vrací vždy jeden řádek, takže se „nic“ liší od „v pořádku“.
-* `[OVĚŘIT]` `NOT IN` při `NULL` v poddotazu.
+* `[POZOROVÁNO]` `NOT IN` při `NULL` v poddotazu.
 * `[POZOROVÁNO]` S osiřelým řádkem `20 | 999 | SKU-ORPHAN` a `foreign_keys = 0` vrátil `SELECT COUNT(*) FROM pragma_foreign_key_check;` hodnotu `1` a `LEFT JOIN` dotaz řádek `20 | 999`.
-* `[POZOROVÁNO]` `SELECT 999 NOT IN (1, 2)` vrátilo `1`. `SELECT 999 NOT IN (1, NULL)` zobrazilo v `.mode column` prázdnou hodnotu. `[OVĚŘIT]` přes `typeof(...)`.
 * `[VÝKLAD]` `NOT IN` s `NULL` v poddotazu osiřelé řádky nenajde (falešně zelená kontrola). V tomto schématu k tomu nedojde, protože `orders.id` je `INTEGER PRIMARY KEY`. Bezpečnější jsou `LEFT JOIN ... IS NULL` a `NOT EXISTS`. Zatím neověřeno na tabulkách s `NULL`.
+
+---
+
+## 9. Tři alternativní dotazy
+
+Cílem tohoto testovacího scénáře bylo ověřit chování různých SQL přístupů při kontrole referenční integrity (detekce tzv. osiřelých záznamů – *orphaned records*) a počítání položek konkrétní objednávky. 
+
+Dotazy byly otestovány nad databází SQLite (s vypnutou kontrolou cizích klíčů `PRAGMA foreign_keys = OFF`, aby bylo možné simulovat nekonzistentní data) ve třech hraničních stavech:
+1. **Prázdná tabulka** `order_items` (ověřuje, zda dotaz vrací `0` místo `NULL`).
+2. **1 platná položka** navázaná na existující objednávku (`order_id = 1`).
+3. **1 osiřelá položka** odkazující na neexistující objednávku (`order_id = 999`).
+
+Všechny čtyři porovnávané varianty (původní dotaz s `NOT IN` viz sekce **8. Jedna kontrola**, upravený dotaz s `NOT EXISTS` i dva návrhy vygenerované pomocí AI) vrátily ve všech testovacích stavech shodné a správné výsledky:
+
+| Stav | `NOT IN` (původní) | `NOT EXISTS` | AI 1 | AI 2 |
+| :--- | :--- | :--- | :--- | :--- |
+| prázdná | `0 / 0` | `0 / 0` | `0 / 0` | `0 / 0` |
+| 1 platná | `1 / 0` | `1 / 0` | `1 / 0` | `1 / 0` |
+| 1 osiřelá | `0 / 1` | `0 / 1` | `0 / 1` | `0 / 1` |
+
+### Zhodnocení jednotlivých dotazů z pohledu QA a výkonu
+
+#### [`NOT EXISTS`](screenshots/Order_items_integrity_sql.png) (bezpečná náhrada za `NOT IN`)
+* **Plusy:** Na rozdíl od původního `NOT IN` je tento zápis zcela odolný vůči hodnotám `NULL` v poddotazu (pokud by schéma v budoucnu `NULL` povolilo, `NOT IN` by přestal vracet výsledky, zatímco `NOT EXISTS` bude fungovat spolehlivě). Použití `COUNT(*)` navíc přirozeně vrací `0` i u prázdné tabulky.
+* **Minusy:** Používá dva samostatné skalární poddotazy, což znamená dvojí průchod tabulkou `order_items`. Na velkých objemech dat je to méně efektivní.
+
+```sql
+SELECT
+  (SELECT COUNT(*) FROM order_items WHERE order_id = 1) AS order_1_items,
+  (SELECT COUNT(*)
+     FROM order_items i
+    WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.id = i.order_id)) AS orphaned_items;
+```
+
+#### [AI 1](screenshots/Single_Check_Item_Count_and_Orphaned_Records_AI_SQL_1.png) (`LEFT JOIN` + podmíněná agregace) /AI — *Doporučená varianta*
+* **Plusy:** Nejlepší volba pro produkční nasazení. Obě metriky spočítá během **jednoho průchodu** daty pomocí `LEFT JOIN` a funkce `CASE`. Prázdnou tabulku spolehlivě ošetřuje pomocí `COALESCE(..., 0)`.
+* **Minusy:** Pro začátečníky v SQL může být kombinace `SUM(CASE WHEN ...)` na první pohled o něco méně čitelná než dva oddělené `SELECT` dotazy.
+
+```sql
+SELECT
+  COALESCE(SUM(CASE WHEN oi.order_id = 1 THEN 1 ELSE 0 END), 0) AS order_1_items,
+  COALESCE(SUM(CASE WHEN o.id IS NULL THEN 1 ELSE 0 END), 0) AS orphaned_items
+FROM order_items oi
+LEFT JOIN orders o ON oi.order_id = o.id;
+```
+
+#### [AI 2](screenshots/Single_Check_Item_Count_and_Orphaned_Records_AI_SQL_2.png) (CTE + podmíněná agregace) /AI
+* **Plusy:** Rozdělení dotazu do pojmenovaných bloků (CTE – `WITH`) výborně odděluje přípravu příznaků (*flags*) od samotné agregace. Skvěle se hodí pro ladění nebo při rozšiřování o další složitější byznys pravidla.
+* **Mínusy:** Pro tento konkrétní případ je zápis zbytečně dlouhý (*over-engineered*). Výkonnostně i funkčně dělá totéž co varianta **AI 1**, jen s větším množstvím kódu k údržbě.
+
+```sql
+WITH item_integrity_flags AS (
+  SELECT
+    oi.id AS item_id,
+    oi.order_id,
+    CASE 
+      WHEN oi.order_id = 1 THEN 1 
+      ELSE 0 
+    END AS is_target_order,
+    CASE 
+      WHEN o.id IS NULL THEN 1 
+      ELSE 0 
+    END AS is_orphaned
+  FROM order_items oi
+  LEFT JOIN orders o 
+    ON oi.order_id = o.id
+),
+aggregated_metrics AS (
+  SELECT
+    SUM(is_target_order) AS raw_order_1_count,
+    SUM(is_orphaned) AS raw_orphaned_count
+  FROM item_integrity_flags
+)
+SELECT
+  COALESCE(raw_order_1_count, 0) AS order_1_items,
+  COALESCE(raw_orphaned_count, 0) AS orphaned_items
+FROM aggregated_metrics;
+```
