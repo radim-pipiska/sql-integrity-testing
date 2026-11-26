@@ -1,6 +1,6 @@
 # Poznámky: testování databází (SQLite)
 
-Stav k 25. 11. 2026. Data v tabulkách `payments`, `payments_u`, `orders` a `order_items` jsou **simulovaná ručními `INSERT`y**, žádné reálné API se tu nevolá. `[POZOROVÁNO]` se proto týká chování SQLite a mých dotazů, ne chování nějaké služby.
+Stav k 26. 11. 2026. Data v tabulkách `payments`, `payments_u`, `orders` a `order_items` jsou **simulovaná ručními `INSERT`y**, žádné reálné API se tu nevolá. `[POZOROVÁNO]` se proto týká chování SQLite a mých dotazů, ne chování nějaké služby.
 
 **Značky:** `[POZOROVÁNO]` = viděl jsem na vlastním výstupu · `[VÝKLAD]` = můj závěr z pozorování · `[HYPOTÉZA]` / `[OVĚŘIT]` = zatím nepodloženo · `[OTÁZKA NA ANALYTIKA]` · `/AI` = výstup AI, platí až po ověření spuštěním
 
@@ -238,9 +238,9 @@ Parse error near line 13: near "foreign_key_check": syntax error
 * `[POZOROVÁNO]` Po zapnutí `foreign_keys = ON` selhal nový `INSERT` s neexistujícím `order_id` a dříve vložený osiřelý řádek zůstal (kroky 4 a 5). Zapnutí kontroly tedy starý osiřelý řádek neopravilo ani nesmazalo.
 * `[POZOROVÁNO]` `PRAGMA foreign_key_check;` vrátil sloupce `table`, `rowid`, `parent`, `fkid` a řádek `order_items | 1 | orders | 0`.
 * `[VÝKLAD]` Zapnutá kontrola chrání nové `INSERT`y. Chování při `UPDATE` a `DELETE` jsem nezkoušel: `[OVĚŘIT]`.
-* `[VÝKLAD]` Prázdný výsledek dotazu na osiřelé záznamy i `PRAGMA foreign_key_check;` by byl falešně zelený, kdyby se do tabulek nezapsalo nic. Stejná slabina jako u kontroly duplicit (sekce 3). Kontrolu je třeba doplnit o očekávaný počet řádků (např. `SELECT COUNT(*) FROM order_items WHERE order_id = 1;`). `[OVĚŘIT]` sabotáží: vyčistit osiřelý řádek a ověřit, že obě kontroly vrátí prázdný výsledek.
+* `[VÝKLAD]` Prázdný výsledek dotazu na osiřelé záznamy i `PRAGMA foreign_key_check;` by byl falešně zelený, kdyby se do tabulek nezapsalo nic. Stejná slabina jako u kontroly duplicit (sekce 3). Kontrolu je třeba doplnit o očekávaný počet řádků (např. `SELECT COUNT(*) FROM order_items WHERE order_id = 1;`).
 * `[HYPOTÉZA]` Použití `PRAGMA foreign_key_check;` jako auditního kroku po migraci nebo dávkovém importu (kdy bývá kontrola dočasně vypnutá). Nepozorováno, zatím jen obecná úvaha.
-* `[POZOROVÁNO]` `PRAGMA foreign_key_check;` osiřelý řádek našel i bez zapnutého `foreign_keys = ON` (předpoklad `0` v nové relaci, nevypsáno).
+* `[POZOROVÁNO]` `PRAGMA foreign_key_check;` osiřelý řádek našel i bez zapnutého `foreign_keys = ON`.
 * `[POZOROVÁNO]` Výsledek kontroly se mění podle aktuálních dat, neukládá se.
 * `[VÝKLAD]` Kontrola nad prázdnou tabulkou je prázdná, stejně jako nad tisíci platnými řádky. Aby test něco dokazoval, musí ověřit i očekávaný počet řádků.
 * `[HYPOTÉZA]` Prázdný výsledek se vypisuje různě podle `.mode`. `[OVĚŘIT]`.
@@ -264,24 +264,21 @@ SELECT
 | 1 osiřelá položka (`order_id = 999`) | `0 \| 1` | FAIL |
 
 * `[POZOROVÁNO]` `foreign_keys` bylo před pokusem `0`.
-* `[POZOROVÁNO]` `SELECT COUNT(*) FROM pragma_foreign_key_check;` se dá zavolat. Výstup `0`. Detekci s osiřelým řádkem zatím `[OVĚŘIT]`.
+* `[POZOROVÁNO]` `SELECT COUNT(*) FROM pragma_foreign_key_check;` se dá zavolat. První spuštění vrátilo `0` bez vypsaného stavu tabulky, takže samotná nula nic nedokazuje. Detekce s osiřelým řádkem je v odrážce níže.
 * `[VÝKLAD]` Dotaz s agregací bez `GROUP BY` vrací vždy jeden řádek, takže se „nic“ liší od „v pořádku“.
-* `[POZOROVÁNO]` `NOT IN` při `NULL` v poddotazu.
+* `[POZOROVÁNO]` `SELECT typeof(999 NOT IN (1, NULL));` vrátilo `null`: výraz se vyhodnotí jako „neznámo“, ne jako pravda.
 * `[POZOROVÁNO]` S osiřelým řádkem `20 | 999 | SKU-ORPHAN` a `foreign_keys = 0` vrátil `SELECT COUNT(*) FROM pragma_foreign_key_check;` hodnotu `1` a `LEFT JOIN` dotaz řádek `20 | 999`.
 * `[VÝKLAD]` `NOT IN` s `NULL` v poddotazu osiřelé řádky nenajde (falešně zelená kontrola). V tomto schématu k tomu nedojde, protože `orders.id` je `INTEGER PRIMARY KEY`. Bezpečnější jsou `LEFT JOIN ... IS NULL` a `NOT EXISTS`. Zatím neověřeno na tabulkách s `NULL`.
 
 ---
 
-## 9. Tři alternativní dotazy
+## 9. Tři alternativní dotazy: `NOT EXISTS`, `/AI` 1, `/AI` 2
 
-Cílem tohoto testovacího scénáře bylo ověřit chování různých SQL přístupů při kontrole referenční integrity (detekce tzv. osiřelých záznamů – *orphaned records*) a počítání položek konkrétní objednávky. 
+Cíl: zjistit, jestli stejná kontrola (počet položek objednávky 1 a počet osiřelých) dává ve stejných stavech stejná čísla, když ji zapíšu čtyřmi způsoby.
 
-Dotazy byly otestovány nad databází SQLite (s vypnutou kontrolou cizích klíčů `PRAGMA foreign_keys = OFF`, aby bylo možné simulovat nekonzistentní data) ve třech hraničních stavech:
-1. **Prázdná tabulka** `order_items` (ověřuje, zda dotaz vrací `0` místo `NULL`).
-2. **1 platná položka** navázaná na existující objednávku (`order_id = 1`).
-3. **1 osiřelá položka** odkazující na neexistující objednávku (`order_id = 999`).
+Prostředí: SQLite 3.54.1, schéma `db/schema_fk.sql`, v `orders` jen `id = 1`, `foreign_keys = 0` (výchozí, vypsáno jen u AI 1). Soubory: `checks/order_items_integrity.sql` (`NOT EXISTS`), `[DOPLNIT RUČNĚ: cesta k alt_ai_1.sql a alt_ai_2.sql]`. AI 1 jsem spustil vložením textu do terminálu, `NOT EXISTS` a AI 2 přes `.read`.
 
-Všechny čtyři porovnávané varianty (původní dotaz s `NOT IN` viz sekce **8. Jedna kontrola**, upravený dotaz s `NOT EXISTS` i dva návrhy vygenerované pomocí AI) vrátily ve všech testovacích stavech shodné a správné výsledky:
+Stavy: prázdná `order_items`; 1 platná položka (`order_id = 1`); 1 osiřelá položka (`order_id = 999`).
 
 | Stav | `NOT IN` (původní) | `NOT EXISTS` | AI 1 | AI 2 |
 | :--- | :--- | :--- | :--- | :--- |
@@ -289,11 +286,13 @@ Všechny čtyři porovnávané varianty (původní dotaz s `NOT IN` viz sekce **
 | 1 platná | `1 / 0` | `1 / 0` | `1 / 0` | `1 / 0` |
 | 1 osiřelá | `0 / 1` | `0 / 1` | `0 / 1` | `0 / 1` |
 
-### Zhodnocení jednotlivých dotazů z pohledu QA a výkonu
+(Formát `order_1_items / orphaned_items`.)
 
-#### [`NOT EXISTS`](screenshots/Order_items_integrity_sql.png) (bezpečná náhrada za `NOT IN`)
-* **Plusy:** Na rozdíl od původního `NOT IN` je tento zápis zcela odolný vůči hodnotám `NULL` v poddotazu (pokud by schéma v budoucnu `NULL` povolilo, `NOT IN` by přestal vracet výsledky, zatímco `NOT EXISTS` bude fungovat spolehlivě). Použití `COUNT(*)` navíc přirozeně vrací `0` i u prázdné tabulky.
-* **Minusy:** Používá dva samostatné skalární poddotazy, což znamená dvojí průchod tabulkou `order_items`. Na velkých objemech dat je to méně efektivní.
+* `[POZOROVÁNO]` Všechny čtyři zápisy daly ve všech třech stavech stejná čísla. Moje tipy před spuštěním byly stejné.
+* `[POZOROVÁNO]` Oba dotazy od AI byly v těchto třech stavech správné. Teze „AI dotaz bude horší“ se tímto pokusem nepotvrdila.
+* `[VÝKLAD]` Past `NOT IN` s `NULL` (sekce 8) se zde neprojevila, protože `orders.id` je `INTEGER PRIMARY KEY` a `NULL` mít nemůže. Shoda ve třech stavech nedokazuje, že jsou dotazy rovnocenné ve všech případech.
+
+### [`NOT EXISTS`](screenshots/Order_items_integrity_sql.png)
 
 ```sql
 SELECT
@@ -302,10 +301,11 @@ SELECT
      FROM order_items i
     WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.id = i.order_id)) AS orphaned_items;
 ```
+* `[POZOROVÁNO]` Na prázdné tabulce vrátil `0 / 0`.
+* `[VÝKLAD]` `NOT EXISTS` nemá past s `NULL` jako `NOT IN`. `[OVĚŘIT]` na dočasných tabulkách, kde rodičovský sloupec obsahuje `NULL`.
+* `[HYPOTÉZA]` Dva poddotazy znamenají dva průchody `order_items`. Výkon jsem neměřil. `[OVĚŘIT]` přes `EXPLAIN QUERY PLAN`, na malých datech to ale nemá význam.
 
-#### [AI 1](screenshots/Single_Check_Item_Count_and_Orphaned_Records_AI_SQL_1.png) (`LEFT JOIN` + podmíněná agregace) /AI — *Doporučená varianta*
-* **Plusy:** Nejlepší volba pro produkční nasazení. Obě metriky spočítá během **jednoho průchodu** daty pomocí `LEFT JOIN` a funkce `CASE`. Prázdnou tabulku spolehlivě ošetřuje pomocí `COALESCE(..., 0)`.
-* **Minusy:** Pro začátečníky v SQL může být kombinace `SUM(CASE WHEN ...)` na první pohled o něco méně čitelná než dva oddělené `SELECT` dotazy.
+### [AI 1](screenshots/Single_Check_Item_Count_and_Orphaned_Records_AI_SQL_1.png) (`LEFT JOIN` + podmíněné součty) `/AI`
 
 ```sql
 SELECT
@@ -314,10 +314,11 @@ SELECT
 FROM order_items oi
 LEFT JOIN orders o ON oi.order_id = o.id;
 ```
+* `[POZOROVÁNO]` Na prázdné tabulce vrátil `0 / 0`.
+* `[VÝKLAD]` `COALESCE` má smysl, protože `SUM` nad prázdnou množinou vrací `NULL`. `[OVĚŘIT]` sabotáží: spustit bez `COALESCE` na prázdné tabulce.
+* `[HYPOTÉZA]` Kdyby rodičovský klíč v `orders` nebyl unikátní, `LEFT JOIN` by mohl řádky zdvojit a čísla zkreslit. `[OVĚŘIT]`.
 
-#### [AI 2](screenshots/Single_Check_Item_Count_and_Orphaned_Records_AI_SQL_2.png) (CTE + podmíněná agregace) /AI
-* **Plusy:** Rozdělení dotazu do pojmenovaných bloků (CTE – `WITH`) výborně odděluje přípravu příznaků (*flags*) od samotné agregace. Skvěle se hodí pro ladění nebo při rozšiřování o další složitější byznys pravidla.
-* **Mínusy:** Pro tento konkrétní případ je zápis zbytečně dlouhý (*over-engineered*). Výkonnostně i funkčně dělá totéž co varianta **AI 1**, jen s větším množstvím kódu k údržbě.
+### [AI 2](screenshots/Single_Check_Item_Count_and_Orphaned_Records_AI_SQL_2.png) (CTE + podmíněné součty) `/AI`
 
 ```sql
 WITH item_integrity_flags AS (
@@ -347,3 +348,9 @@ SELECT
   COALESCE(raw_orphaned_count, 0) AS orphaned_items
 FROM aggregated_metrics;
 ```
+* `[POZOROVÁNO]` Přes `.read` vrátil ve třech stavech `0 / 0`, `1 / 0`, `0 / 1`.
+* `[VÝKLAD]` Dělá stejnou práci jako AI 1, jen v delším zápisu. Pro tuto úlohu nic nepřidává. Výkonnostní rozdíl jsem neměřil.
+
+### Závěr
+
+Pro tuto úlohu je nejjednodušší varianta (`NOT EXISTS`) stejně spolehlivá jako obě od AI. Žádnou „doporučenou“ variantu zatím neurčuji: nejdřív ověřím `NULL` v rodičovském sloupci a neunikátní rodičovský klíč (`LEFT JOIN`).
