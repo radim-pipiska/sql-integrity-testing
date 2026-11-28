@@ -1,6 +1,6 @@
 # Poznámky: testování databází (SQLite)
 
-Stav k 26. 11. 2026. Data v tabulkách `payments`, `payments_u`, `orders` a `order_items` jsou **simulovaná ručními `INSERT`y**, žádné reálné API se tu nevolá. `[POZOROVÁNO]` se proto týká chování SQLite a mých dotazů, ne chování nějaké služby.
+Stav k 28. 11. 2026. Data v tabulkách `payments`, `payments_u`, `orders` a `order_items` jsou **simulovaná ručními `INSERT`y**, žádné reálné API se tu nevolá. `[POZOROVÁNO]` se proto týká chování SQLite a mých dotazů, ne chování nějaké služby.
 
 **Značky:** `[POZOROVÁNO]` = viděl jsem na vlastním výstupu · `[VÝKLAD]` = můj závěr z pozorování · `[HYPOTÉZA]` / `[OVĚŘIT]` = zatím nepodloženo · `[OTÁZKA NA ANALYTIKA]` · `/AI` = výstup AI, platí až po ověření spuštěním
 
@@ -218,7 +218,7 @@ WHERE o.id IS NULL;
 | 5 | `1` | `SELECT * FROM order_items;` | stále jen `1 \| 999 \| SKU-1` (998 se neuložil, 999 nezmizel) |
 | 6 | `1` | `PRAGMA foreign_key_check;` | `order_items \| 1 \| orders \| 0` |
 | – | `1` | dotaz na osiřelé záznamy po zapnutí | `[OVĚŘIT]` nespuštěno (v kroku 5 jen `SELECT *`) |
-| 7 | nová relace (`foreign_keys` nevypsáno, dříve vždy `0`) | `PRAGMA foreign_key_check;` s osiřelým řádkem | `order_items \| 1 \| orders \| 0` |
+| 7 | stejný pokus s vypsaným foreign_keys = 0 viz sekce 8 | `PRAGMA foreign_key_check;` s osiřelým řádkem | `order_items \| 1 \| orders \| 0` |
 | 8 | stejná | po `DELETE FROM order_items WHERE order_id = 999;` | žádné řádky (v režimu bez .mode column jen hlavička) |
 | 9 | stejná | po `DELETE FROM order_items;`, `SELECT COUNT(*) FROM order_items;` | kontrola bez řádků, `COUNT(*) = 0` |
 
@@ -243,7 +243,7 @@ Parse error near line 13: near "foreign_key_check": syntax error
 * `[POZOROVÁNO]` `PRAGMA foreign_key_check;` osiřelý řádek našel i bez zapnutého `foreign_keys = ON`.
 * `[POZOROVÁNO]` Výsledek kontroly se mění podle aktuálních dat, neukládá se.
 * `[VÝKLAD]` Kontrola nad prázdnou tabulkou je prázdná, stejně jako nad tisíci platnými řádky. Aby test něco dokazoval, musí ověřit i očekávaný počet řádků.
-* `[HYPOTÉZA]` Prázdný výsledek se vypisuje různě podle `.mode`. `[OVĚŘIT]`.
+* `[POZOROVÁNO]` Prázdný výsledek se vypíše různě: v `.mode column` nic (ani hlavičku), v rámečkovém režimu (výchozí po spuštění) jen hlavičku bez řádků. Zjištěno ve dvou různých relacích. `[OVĚŘIT]` přepnutím `.mode` v jedné relaci.
 
 ---
 
@@ -276,7 +276,7 @@ SELECT
 
 Cíl: zjistit, jestli stejná kontrola (počet položek objednávky 1 a počet osiřelých) dává ve stejných stavech stejná čísla, když ji zapíšu čtyřmi způsoby.
 
-Prostředí: SQLite 3.54.1, schéma `db/schema_fk.sql`, v `orders` jen `id = 1`, `foreign_keys = 0` (výchozí, vypsáno jen u AI 1). Soubory: `checks/order_items_integrity.sql` (`NOT EXISTS`), `[DOPLNIT RUČNĚ: cesta k alt_ai_1.sql a alt_ai_2.sql]`. AI 1 jsem spustil vložením textu do terminálu, `NOT EXISTS` a AI 2 přes `.read`.
+Prostředí: SQLite 3.54.1, schéma `db/schema_fk.sql`, v `orders` jen `id = 1`, `foreign_keys = 0` (výchozí, vypsáno jen u AI 1). Soubory: `checks/order_items_integrity.sql` (`NOT EXISTS`), cesta k A1 `checks/alt_ai_1.sql` a A2 `checks/alt_ai_2.sql`. AI 1 jsem spustil vložením textu do terminálu, `NOT EXISTS` a AI 2 přes `.read`.
 
 Stavy: prázdná `order_items`; 1 platná položka (`order_id = 1`); 1 osiřelá položka (`order_id = 999`).
 
@@ -302,7 +302,7 @@ SELECT
     WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.id = i.order_id)) AS orphaned_items;
 ```
 * `[POZOROVÁNO]` Na prázdné tabulce vrátil `0 / 0`.
-* `[VÝKLAD]` `NOT EXISTS` nemá past s `NULL` jako `NOT IN`. `[OVĚŘIT]` na dočasných tabulkách, kde rodičovský sloupec obsahuje `NULL`.
+* `[POZOROVÁNO]` Při `NULL` v rodičovském sloupci našel stejný vzor (`NOT EXISTS`) osiřelý řádek, `NOT IN` ne (sekce 8, dočasné tabulky: `NOT EXISTS` = 1, `NOT IN` = 0).
 * `[HYPOTÉZA]` Dva poddotazy znamenají dva průchody `order_items`. Výkon jsem neměřil. `[OVĚŘIT]` přes `EXPLAIN QUERY PLAN`, na malých datech to ale nemá význam.
 
 ### [AI 1](screenshots/Single_Check_Item_Count_and_Orphaned_Records_AI_SQL_1.png) (`LEFT JOIN` + podmíněné součty) `/AI`
@@ -315,7 +315,8 @@ FROM order_items oi
 LEFT JOIN orders o ON oi.order_id = o.id;
 ```
 * `[POZOROVÁNO]` Na prázdné tabulce vrátil `0 / 0`.
-* `[VÝKLAD]` `COALESCE` má smysl, protože `SUM` nad prázdnou množinou vrací `NULL`. `[OVĚŘIT]` sabotáží: spustit bez `COALESCE` na prázdné tabulce.
+* `[POZOROVÁNO]` Bez `COALESCE` vrátil dotaz na prázdné `order_items` `NULL | NULL` (v `.mode column` prázdné buňky) a `SELECT typeof(SUM(order_id)) FROM order_items;` vrátilo `null`. `COUNT(*)` na prázdné množině vrací `0`, `SUM` ne.
+* `[VÝKLAD]` `COALESCE` je v tomto dotazu potřeba: bez něj by kontrola v prázdném stavu nevrátila čísla.
 * `[HYPOTÉZA]` Kdyby rodičovský klíč v `orders` nebyl unikátní, `LEFT JOIN` by mohl řádky zdvojit a čísla zkreslit. `[OVĚŘIT]`.
 
 ### [AI 2](screenshots/Single_Check_Item_Count_and_Orphaned_Records_AI_SQL_2.png) (CTE + podmíněné součty) `/AI`
@@ -353,4 +354,4 @@ FROM aggregated_metrics;
 
 ### Závěr
 
-Pro tuto úlohu je nejjednodušší varianta (`NOT EXISTS`) stejně spolehlivá jako obě od AI. Žádnou „doporučenou“ variantu zatím neurčuji: nejdřív ověřím `NULL` v rodičovském sloupci a neunikátní rodičovský klíč (`LEFT JOIN`).
+Pro tuto úlohu je nejjednodušší varianta (`NOT EXISTS`) stejně spolehlivá jako obě od AI. `NULL` v rodičovském sloupci jsem ověřil (sekce 8). Žádnou „doporučenou“ variantu zatím neurčuji: zbývá ověřit neunikátní rodičovský klíč u variant s `LEFT JOIN`.
