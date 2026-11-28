@@ -35,7 +35,7 @@ SELECT sqlite_version();
 * `[POZOROVÁNO]` Data v `test.db` po `.quit` a novém spuštění zůstala (řádky s `id` 3 a 4).
 * `[POZOROVÁNO]` `sqlite3.exe` spuštěný z jiné složky než ze složky repozitáře pracoval s jinou kopií `test.db`. Po zkopírování souboru do složky repozitáře odpovídal jeho obsah očekávanému stavu.
 * `[HYPOTÉZA]` Dojem, že data zmizela, mohl vzniknout i omylem provedeným `DROP` (příkaz vyvolaný šipkou z historie). Neověřeno.
-* `[POZOROVÁNO]` `.databases` ukáže plnou cestu otevřeného souboru (`main: C:\qa\sql-integrity-testing\db\test.db r/w`). Používat jako první kontrolu po spuštění.
+* `[POZOROVÁNO]` `.databases` ukáže plnou cestu otevřeného souboru (`...\db\test.db`). Používat jako první kontrolu po spuštění.
 
 ```text
 Connected to a transient in-memory database.
@@ -268,7 +268,7 @@ SELECT
 * `[VÝKLAD]` Dotaz s agregací bez `GROUP BY` vrací vždy jeden řádek, takže se „nic“ liší od „v pořádku“.
 * `[POZOROVÁNO]` `SELECT typeof(999 NOT IN (1, NULL));` vrátilo `null`: výraz se vyhodnotí jako „neznámo“, ne jako pravda.
 * `[POZOROVÁNO]` S osiřelým řádkem `20 | 999 | SKU-ORPHAN` a `foreign_keys = 0` vrátil `SELECT COUNT(*) FROM pragma_foreign_key_check;` hodnotu `1` a `LEFT JOIN` dotaz řádek `20 | 999`.
-* `[VÝKLAD]` `NOT IN` s `NULL` v poddotazu osiřelé řádky nenajde (falešně zelená kontrola). V tomto schématu k tomu nedojde, protože `orders.id` je `INTEGER PRIMARY KEY`. Bezpečnější jsou `LEFT JOIN ... IS NULL` a `NOT EXISTS`. Zatím neověřeno na tabulkách s `NULL`.
+* `[POZOROVÁNO]` Na dočasných tabulkách (`parents` s hodnotami `1` a `NULL`, `children` s `1` a `999`) našly osiřelý řádek `999` dotazy s `LEFT JOIN` (`1`) i `NOT EXISTS` (`1`), `NOT IN` ne (`0`). Při `NULL` v rodičovském sloupci je `NOT IN` falešně zelený. V `db/schema_fk.sql` k tomu nedojde, protože `orders.id` je `INTEGER PRIMARY KEY`.
 
 ---
 
